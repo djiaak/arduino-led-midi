@@ -22,7 +22,7 @@
 #define NOTE_ON_COLOR_ACCIDENTAL CRGB(10,200,200)
 #define NOTE_OFF_COLOR CRGB(0,0,0)
 
-#define DEBUG
+//#define DEBUG
 
 CRGB leds[NUM_LEDS];
 
@@ -109,8 +109,10 @@ void setLedStatus(int noteNumber, boolean ledState) {
 }
 
 void setup() {
+  #ifdef DEBUG 
   Serial.begin(115200);
   while (!Serial);
+  #endif
   
   clearMidiToLedMapping();
   initMidiToLedMapping(NOTE_FROM, NOTE_TO, NUM_LEDS);
@@ -125,8 +127,10 @@ void setup() {
   testLeds();
   delay(2000);
   clearLeds();
-  
+
+  #ifdef DEBUG 
   Serial.println("Arduino ready.");
+  #endif
 }
 
 
