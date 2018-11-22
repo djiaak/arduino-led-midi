@@ -1,3 +1,11 @@
+/*
+ * LEDs will light/dim based on MIDI note on/off events. Controller change events can be
+ * used to redefine the note range (controller 0 for low note, controller 1 for high note).
+ * E.g. if the LED strip laid out on the piano reaches from F2 (29) to G8 (103), controller 
+ * change events 0 29 and 1 103 should be sent.
+ * 
+ * This program only listens to events for the first MIDI channel.
+ */
 #include <EEPROM.h>
 #include "MIDIUSB.h"
 #include "FastLED.h"
@@ -13,11 +21,13 @@
 #define LED_TYPE APA102
 #define MIDI_NOTE_COUNT 128
 
+//all messages are for MIDI channel 1 
 #define MIDI_NOTE_OFF 0x80
 #define MIDI_NOTE_ON 0x90
+#define MIDI_CONTROLLER_CHANGE 0xB0
 
-#define FRAMES_PER_SECOND  120
-#define BRIGHTNESS          96
+#define FRAMES_PER_SECOND 120
+#define BRIGHTNESS 96
 
 #define NOTE_ON_COLOR_NATURAL CRGB(200,200,200)
 #define NOTE_ON_COLOR_ACCIDENTAL CRGB(10,200,200)
@@ -61,7 +71,7 @@ float getNoteCoord(int note) {
   return (float)KEY_COORDS[inFirstOctave] + noteOctave;
 }
 
-int getMidiToLedMapping(int note, int noteFrom, int noteTo, int ledCount) {
+int getMidiToLedMapping(int note, int ledCount) {
   int noteCount = noteTo - noteFrom + 1;
   float ledsPerNote = ledCount / (float)noteCount;
   float noteCoord = getNoteCoord(note);
@@ -71,9 +81,9 @@ int getMidiToLedMapping(int note, int noteFrom, int noteTo, int ledCount) {
   return ledMapping;
 }
 
-void initMidiToLedMapping(int noteFrom, int noteTo, int ledCount) {
+void initMidiToLedMapping(int ledCount) {
   for (int i=noteFrom; i <= noteTo; i++) {
-    midiToLedMapping[i] = getMidiToLedMapping(i, noteFrom, noteTo, ledCount);
+    midiToLedMapping[i] = getMidiToLedMapping(i, ledCount);
   }
 }
 
@@ -113,8 +123,8 @@ void setLedStatus(int noteNumber, boolean ledState) {
 
 void loadNoteRange() {
   byte value = EEPROM.read(0);
-  int low = value >> 4;
-  int high = value & 0xF;
+  int high = value >> 4;
+  int low = value & 0xF;
   if ((low == 0 && high == 0) || 
     low >= high) {
     noteFrom = NOTE_FROM_DEFAULT;
@@ -125,6 +135,21 @@ void loadNoteRange() {
   }
 }
 
+void saveNoteRange() {
+  EEPROM.write(0, (noteTo << 4) + noteFrom); 
+}
+
+void setNoteRange(byte controllerNo, byte value) {
+  if (controllerNo == 0) {
+    noteFrom = value;
+  } else if (controllerNo == 1) {
+    noteTo = value;
+  }
+  saveNoteRange();
+  clearMidiToLedMapping();
+  initMidiToLedMapping(NUM_LEDS);
+}
+
 void setup() {
   #ifdef DEBUG 
   Serial.begin(115200);
@@ -133,9 +158,10 @@ void setup() {
 
   loadNoteRange();
   clearMidiToLedMapping();
-  initMidiToLedMapping(noteFrom, noteTo, NUM_LEDS);
+  initMidiToLedMapping(NUM_LEDS);
    
-  FastLED.addLeds<LED_TYPE,DATA_PIN,CLOCK_PIN,COLOR_ORDER>(leds, NUM_LEDS).setCorrection(TypicalLEDStrip);
+  FastLED.addLeds<LED_TYPE,DATA_PIN,CLOCK_PIN,COLOR_ORDER>(leds, NUM_LEDS)
+    .setCorrection(TypicalLEDStrip);
   LEDS.setBrightness(BRIGHTNESS);
   clearLeds();
 
@@ -174,6 +200,9 @@ void loop() {
           setLedStatus(rx.byte2, true);
           FastLED.show();
           FastLED.delay(1000/FRAMES_PER_SECOND);  
+          break;
+         case MIDI_CONTROLLER_CHANGE:
+          setNoteRange(rx.byte2, rx.byte3);
           break;
       }
     }
