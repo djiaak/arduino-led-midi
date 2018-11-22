@@ -1,10 +1,11 @@
+#include <EEPROM.h>
 #include "MIDIUSB.h"
-
 #include "FastLED.h"
 
 #define NUM_LEDS 144
-#define NOTE_FROM 29
-#define NOTE_TO 101
+#define NOTE_FROM_DEFAULT 29
+#define NOTE_TO_DEFAULT 101
+
 
 #define COLOR_ORDER GRB
 #define DATA_PIN 5
@@ -21,6 +22,7 @@
 #define NOTE_ON_COLOR_NATURAL CRGB(200,200,200)
 #define NOTE_ON_COLOR_ACCIDENTAL CRGB(10,200,200)
 #define NOTE_OFF_COLOR CRGB(0,0,0)
+#define NOTES_PER_OCTAVE 12
 
 //#define DEBUG
 
@@ -28,8 +30,9 @@ CRGB leds[NUM_LEDS];
 
 int midiToLedMapping[MIDI_NOTE_COUNT];
 
-#define OCTAVE_COUNT
-#define NOTES_PER_OCTAVE 12
+int noteFrom;
+int noteTo;
+
 float KEY_COORDS[NOTES_PER_OCTAVE] = { 0.07, 0.14, 0.21, 0.28, 0.36, 0.5, 0.57, 0.64, 0.71, 0.78, 0.86, 0.93 };
 
 /**
@@ -108,18 +111,30 @@ void setLedStatus(int noteNumber, boolean ledState) {
   leds[index] = ledState ? noteOnColor : NOTE_OFF_COLOR;
 }
 
+void loadNoteRange() {
+  byte value = EEPROM.read(0);
+  int low = value >> 4;
+  int high = value & 0xF;
+  if ((low == 0 && high == 0) || 
+    low >= high) {
+    noteFrom = NOTE_FROM_DEFAULT;
+    noteTo = NOTE_TO_DEFAULT;  
+  } else {
+    noteFrom = low;
+    noteTo = high;
+  }
+}
+
 void setup() {
   #ifdef DEBUG 
   Serial.begin(115200);
   while (!Serial);
   #endif
-  
-  clearMidiToLedMapping();
-  initMidiToLedMapping(NOTE_FROM, NOTE_TO, NUM_LEDS);
 
-  
-  //setDefaultMidiToLedMapping();
-  
+  loadNoteRange();
+  clearMidiToLedMapping();
+  initMidiToLedMapping(noteFrom, noteTo, NUM_LEDS);
+   
   FastLED.addLeds<LED_TYPE,DATA_PIN,CLOCK_PIN,COLOR_ORDER>(leds, NUM_LEDS).setCorrection(TypicalLEDStrip);
   LEDS.setBrightness(BRIGHTNESS);
   clearLeds();
@@ -132,8 +147,6 @@ void setup() {
   Serial.println("Arduino ready.");
   #endif
 }
-
-
 
 void loop() {
   midiEventPacket_t rx;
